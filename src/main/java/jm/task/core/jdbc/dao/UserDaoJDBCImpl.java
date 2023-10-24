@@ -3,108 +3,147 @@ package jm.task.core.jdbc.dao;
 import jm.task.core.jdbc.model.User;
 import jm.task.core.jdbc.util.Util;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
 public class UserDaoJDBCImpl implements UserDao {
-    public UserDaoJDBCImpl() {
 
-    }
+    private Connection connection = Util.getConnection();
 
+    @Override
     public void createUsersTable() {
-        String SQL = """
-                CREATE TABLE USER (
+        String sqlCreate = """
+                CREATE TABLE IF NOT EXISTS USER (
                                        id BIGINT PRIMARY KEY AUTO_INCREMENT,
                                        name VARCHAR(128),
-                                       lastName VARCHAR(128),
-                                       age INT
+                                       last_name VARCHAR(128),
+                                       age TINYINT
                                       );
                 """;
-        try (Connection connection = Util.getConnection()) {
-
-            PreparedStatement preparedStatement = connection.prepareStatement(SQL);
+        try {
+            PreparedStatement preparedStatement = connection.prepareStatement(sqlCreate);
             preparedStatement.executeUpdate();
-        } catch (SQLSyntaxErrorException e) {
-        }
-        catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public void dropUsersTable() {
-        String SQL = """
-                DROP TABLE USER;
-                                """;
-        try (Connection connection = Util.getConnection()) {
-
-            PreparedStatement preparedStatement = connection.prepareStatement(SQL);
-            preparedStatement.executeUpdate();
-        } catch (SQLSyntaxErrorException e) {
+            preparedStatement.close();
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
+    @Override
+    public void dropUsersTable() {
+        String sqlDrop = """
+                DROP TABLE IF EXISTS USER;
+                                """;
+        try {
+            PreparedStatement preparedStatement = connection.prepareStatement(sqlDrop);
+            preparedStatement.executeUpdate();
+            preparedStatement.close();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
     public void saveUser(String name, String lastName, byte age) {
-        String SQL = """
-                INSERT INTO simple.USER (name, lastName, age) 
+        String sqlSave = """
+                INSERT INTO simple.USER (name, last_name, age) 
                 VALUES (?,?,?);
                 """;
-        try (Connection connection = Util.getConnection()) {
-            PreparedStatement preparedStatement = connection.prepareStatement(SQL);
-            preparedStatement.setString(1,name);
-            preparedStatement.setString(2,lastName);
-            preparedStatement.setByte(3,age);
+        try {
+            PreparedStatement preparedStatement = connection.prepareStatement(sqlSave);
+            preparedStatement.setString(1, name);
+            preparedStatement.setString(2, lastName);
+            preparedStatement.setByte(3, age);
 
             preparedStatement.executeUpdate();
+            preparedStatement.close();
+            connection.commit();
             System.out.printf("User с именем %s добавлен в базу данных\n", name);
 
         } catch (SQLException e) {
+            try {
+                connection.rollback();
+            } catch (SQLException ex) {
+                throw new RuntimeException(ex);
+            }
             throw new RuntimeException(e);
         }
     }
 
+    @Override
     public void removeUserById(long id) {
-        String SQL = """
+        String sqlRemove = """
                 DELETE FROM simple.USER
                 WHERE id = ?;
                 """;
-        try (Connection connection = Util.getConnection()) {
-            PreparedStatement preparedStatement = connection.prepareStatement(SQL);
+        try {
+            PreparedStatement preparedStatement = connection.prepareStatement(sqlRemove);
             preparedStatement.setLong(1, id);
 
             preparedStatement.executeUpdate();
+            preparedStatement.close();
+            connection.commit();
+        } catch (SQLException e) {
+            try {
+                connection.rollback();
+            } catch (SQLException ex) {
+                throw new RuntimeException(ex);
+            }
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public List<User> getAllUsers() {
+        String sqlGet = """
+                SELECT *
+                FROM simple.USER;
+                """;
+        try {
+            PreparedStatement preparedStatement = connection.prepareStatement(sqlGet);
+            ResultSet resultSet = preparedStatement.executeQuery();
+            List<User> result = new ArrayList<>();
+            while (resultSet.next()) {
+                result.add(new User(
+                        resultSet.getString("name"),
+                        resultSet.getString("last_name"),
+                        resultSet.getByte("age")
+                ));
+            }
+            System.out.println(result);
+            preparedStatement.close();
+            return result;
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
-        public List<User> getAllUsers() {
-            String SQL = """
-                    SELECT *
-                    FROM simple.USER;
-                    """;
-            try (Connection connection = Util.getConnection()) {
-                PreparedStatement preparedStatement = connection.prepareStatement(SQL);
-                ResultSet resultSet = preparedStatement.executeQuery();
-                List<User> result = new ArrayList<>();
-                while (resultSet.next()) {
-                    result.add(new User(
-                            resultSet.getString("name"),
-                            resultSet.getString("lastName"),
-                            resultSet.getByte("age")
-                    ));
-                }
-                System.out.println(result);
-                return result;
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
+    @Override
+    public void cleanUsersTable() {
+        String sqlClean = """
+                DELETE FROM USER;
+                                """;
+        try {
+            PreparedStatement preparedStatement = connection.prepareStatement(sqlClean);
+
+            preparedStatement.executeUpdate();
+            preparedStatement.close();
+            connection.commit();
+        } catch (SQLException e) {
+            try {
+                connection.rollback();
+            } catch (SQLException ex) {
+                throw new RuntimeException(ex);
             }
+            throw new RuntimeException(e);
+        }
     }
 
-    public void cleanUsersTable() {
-        dropUsersTable();
-        createUsersTable();
+    public Connection getConnection() {
+        return connection;
     }
 }
